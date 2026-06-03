@@ -650,7 +650,10 @@ function showApp(){
   g('mainScroll').style.display = 'block';
   g('saveBar').style.display = 'flex';
   // Re-apply dark mode to header after it becomes visible
-  try{ if(localStorage.getItem('so_dark')==='1') applyDarkHeader(true); }catch(e){}
+  try{
+    const isDark = localStorage.getItem('so_dark')==='1';
+    applyDarkHeader(isDark);
+  }catch(e){}
   // Set to today
   currentDate = new Date();
   initState();
@@ -1430,48 +1433,47 @@ function buildWhatsAppReport(){
   lines.push(`*Касса нал:* ${fmt(kassaBalanceVal)}€`);
   lines.push(``);
 
-  // Расходы — сортировка по примеру:
-  // 1. Мойка
-  // 2. Сотрудники без (К)
-  // 3. Сотрудники с (К)
-  // 4. OTHER_EXPENSES в порядке массива (кроме Мойки и Конверт оф)
-  // 5. Конверт оф в конце
-  const ORDER_OTHER = ['DJ','Олег','Бензин','Метро','Ремонт','Табак','Магазин','Уборка Офиса','Уборка ресторана','Артем','Николай'];
+  // Расходы — строгий порядок по примеру:
+  // Мойка → без(К) сотр. → с(К) сотр. (по порядку EMPLOYEES) → Экстра →
+  // DJ → Олег → Бензин → Метро → Ремонт → Магазин → Табак →
+  // Уборка Офиса → Уборка ресторана → Артем → Николай → Оф кон
 
-  const empWithout = EMPLOYEES.filter(n=>pf(expenses[n].sum)>0 && !expenses[n].checked);
-  const empWith    = EMPLOYEES.filter(n=>pf(expenses[n].sum)>0 && expenses[n].checked);
+  function fmtVal(v){ return Math.round(pf(v)*100)/100; }
 
   const allLines = [];
 
-  // Мойка первой
-  if(pf(otherExp['Мойка'])>0){
-    allLines.push(`Мойка ${Math.round(pf(otherExp['Мойка'])*100)/100}`);
+  // 1. Мойка
+  if(pf(otherExp['Мойка'])>0)
+    allLines.push(`Мойка ${fmtVal(otherExp['Мойка'])}`);
+
+  // 2. Сотрудники БЕЗ (К) — в порядке EMPLOYEES (кроме Экстра)
+  EMPLOYEES.filter(n=>n!=='Экстра').forEach(n=>{
+    if(pf(expenses[n].sum)>0 && !expenses[n].checked)
+      allLines.push(`${n} ${fmtVal(expenses[n].sum)}`);
+  });
+
+  // 3. Сотрудники С (К) — в порядке EMPLOYEES (кроме Экстра)
+  EMPLOYEES.filter(n=>n!=='Экстра').forEach(n=>{
+    if(pf(expenses[n].sum)>0 && expenses[n].checked)
+      allLines.push(`${n} ${fmtVal(expenses[n].sum)} (К)`);
+  });
+
+  // 4. Экстра (всегда после основных сотрудников)
+  if(pf(expenses['Экстра']&&expenses['Экстра'].sum)>0){
+    const tag = expenses['Экстра'].checked ? ' (К)' : '';
+    allLines.push(`Экстра ${fmtVal(expenses['Экстра'].sum)}${tag}`);
   }
 
-  // Сотрудники без (К)
-  empWithout.forEach(n=>{
-    const v = Math.round(pf(expenses[n].sum)*100)/100;
-    allLines.push(`${n} ${v}`);
+  // 5. Другие расходы в строгом порядке
+  ['DJ','Олег','Бензин','Метро','Ремонт','Магазин','Табак',
+   'Уборка Офиса','Уборка ресторана','Артем','Николай'].forEach(n=>{
+    if(pf(otherExp[n])>0)
+      allLines.push(`${n} ${fmtVal(otherExp[n])}`);
   });
 
-  // Сотрудники с (К)
-  empWith.forEach(n=>{
-    const v = Math.round(pf(expenses[n].sum)*100)/100;
-    allLines.push(`${n} ${v} (К)`);
-  });
-
-  // Другие расходы по порядку
-  ORDER_OTHER.forEach(n=>{
-    if(pf(otherExp[n])>0){
-      const v = Math.round(pf(otherExp[n])*100)/100;
-      allLines.push(`${n} ${v}`);
-    }
-  });
-
-  // Конверт оф последним в расходах
-  if(konvertOf>0){
-    allLines.push(`Оф кон ${Math.round(konvertOf*100)/100}`);
-  }
+  // 6. Конверт оф — всегда последним
+  if(konvertOf>0)
+    allLines.push(`Оф кон ${fmtVal(konvertOf)}`);
 
   if(allLines.length){
     const totalExpAll = EMPLOYEES.reduce((s,n)=>s+pf(expenses[n].sum),0)
