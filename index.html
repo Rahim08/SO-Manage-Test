@@ -292,7 +292,12 @@ body.dark .checkbox{border-color:#48484a}
 body.dark .login-screen{background:#1c1c1e}
 body.dark .login-title{color:#f2f2f7}
 body.dark .login-sub{color:#aeaeb2}
-body.dark .header{background:rgba(28,28,30,.98) !important;border-bottom-color:rgba(255,255,255,.1)}
+body.dark .header{
+  background:#1c1c1e !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  border-bottom-color:rgba(255,255,255,.1) !important;
+}
 body.dark .header-title{color:#f2f2f7}
 body.dark .header-date{color:#aeaeb2}
 body.dark .scroll{background:#1c1c1e}
@@ -1407,23 +1412,20 @@ function buildWhatsAppReport(){
   const envExp       = parseFloat(String(envelopeExpense||0).replace(',','.')) || 0;
 
   // Конверт оф — из OTHER_EXPENSES
+  // Конверт оф
   const konvertOf = parseFloat(String(otherExp['Конверт оф']||0).replace(',','.')) || 0;
-  // ч = доход - конверт оф
-  const nalCh = Math.max(0, envIncome - konvertOf);
 
-  // Нал строка: сумма(оф-X/ч-Y)
-  let nalStr = `${fmt(envIncome)}€`;
-  if(konvertOf > 0 || nalCh > 0){
-    nalStr = `${fmt(envIncome)}€(оф-${fmt(konvertOf)}/ч-${fmt(nalCh)})`;
-  }
-
-  // Безнал = Доход - Нал(конверт доход)
-  const beznal = kassaIncomeVal - envIncome;
-
-  // Форматирование числа без лишних нулей
+  // Форматирование числа
   function fmt(n){
     const v = Math.round(parseFloat(String(n||0).replace(',','.')) * 100) / 100;
     return v.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  // Нал = kassaIncomeVal (весь нал доход). ч = kassaIncome - оф
+  const nalCh = Math.max(0, kassaIncomeVal - konvertOf);
+  let nalStr = `${fmt(kassaIncomeVal)}€`;
+  if(konvertOf > 0 || nalCh > 0){
+    nalStr = `${fmt(kassaIncomeVal)}€(оф-${fmt(konvertOf)}/ч-${fmt(nalCh)})`;
   }
 
   let lines = [];
@@ -1431,7 +1433,7 @@ function buildWhatsAppReport(){
   lines.push(`*Продажи:*`);
   lines.push(`*Нал:* ${nalStr}`);
   lines.push(`*Безнал:*`);
-  lines.push(`*Касса нал:* ${fmt(kassaOpenVal)}€`);
+  lines.push(`*Касса нал:* ${fmt(kassaBalance)}€`);
   lines.push(``);
 
   // Расходы
