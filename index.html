@@ -649,6 +649,8 @@ function showApp(){
   g('mainHeader').style.display = 'flex';
   g('mainScroll').style.display = 'block';
   g('saveBar').style.display = 'flex';
+  // Re-apply dark mode to header after it becomes visible
+  try{ if(localStorage.getItem('so_dark')==='1') applyDarkHeader(true); }catch(e){}
   // Set to today
   currentDate = new Date();
   initState();
@@ -1397,35 +1399,27 @@ async function confirmSave(){
 function buildWhatsAppReport(){
   const dateStr = formatDate(currentDate);
 
-  // Данные кассы
-  const kassaIncomeInput = document.querySelector('input[data-field="kassaIncome"]');
-  const kassaOpenInput   = document.querySelector('input[data-field="kassaOpen"]');
-  const kassaIncomeVal   = kassaIncomeInput ? parseFloat(kassaIncomeInput.value||'0') : parseFloat(String(kassaIncome||0).replace(',','.'));
-  const kassaOpenVal     = kassaOpenInput   ? parseFloat(kassaOpenInput.value||'0')   : parseFloat(String(kassaOpen||0).replace(',','.'));
-  const totalExp         = EMPLOYEES.reduce((s,n)=>s+parseFloat(String(expenses[n].sum||0).replace(',','.')),0)
-                         + OTHER_EXPENSES.reduce((s,n)=>s+parseFloat(String(otherExp[n]||0).replace(',','.')),0);
-  const kassaBalance     = kassaOpenVal + kassaIncomeVal - totalExp;
-
-  // Конверт
-  const checkedEmps  = EMPLOYEES.filter(n=>expenses[n].checked && expenses[n].sum);
-  const envIncome    = checkedEmps.reduce((s,n)=>s+parseFloat(String(expenses[n].sum).replace(',','.')||'0'),0);
-  const envExp       = parseFloat(String(envelopeExpense||0).replace(',','.')) || 0;
-
-  // Конверт оф — из OTHER_EXPENSES
-  // Конверт оф
-  const konvertOf = parseFloat(String(otherExp['Конверт оф']||0).replace(',','.')) || 0;
-
   // Форматирование числа
   function fmt(n){
     const v = Math.round(parseFloat(String(n||0).replace(',','.')) * 100) / 100;
     return v.toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   }
+  function pf(v){ return parseFloat(String(v||0).replace(',','.')) || 0; }
 
-  // Нал = kassaIncomeVal (весь нал доход). ч = kassaIncome - оф
-  const nalCh = Math.max(0, kassaIncomeVal - konvertOf);
-  let nalStr = `${fmt(kassaIncomeVal)}€`;
+  // Глобальные переменные (не DOM — сводка уже открыта, инпуты скрыты)
+  const incomeVal  = pf(kassaIncome);
+  const openVal    = pf(kassaOpen);
+  const totalExp   = EMPLOYEES.reduce((s,n)=>s+pf(expenses[n].sum),0)
+                   + OTHER_EXPENSES.reduce((s,n)=>s+pf(otherExp[n]),0);
+  const kassaBalanceVal = openVal + incomeVal - totalExp;
+
+  // Конверт оф
+  const konvertOf = pf(otherExp['Конверт оф']);
+  // Нал = доход кассы. ч = доход - оф
+  const nalCh = Math.max(0, incomeVal - konvertOf);
+  let nalStr = `${fmt(incomeVal)}€`;
   if(konvertOf > 0 || nalCh > 0){
-    nalStr = `${fmt(kassaIncomeVal)}€(оф-${fmt(konvertOf)}/ч-${fmt(nalCh)})`;
+    nalStr = `${fmt(incomeVal)}€(оф-${fmt(konvertOf)}/ч-${fmt(nalCh)})`;
   }
 
   let lines = [];
@@ -1433,27 +1427,57 @@ function buildWhatsAppReport(){
   lines.push(`*Продажи:*`);
   lines.push(`*Нал:* ${nalStr}`);
   lines.push(`*Безнал:*`);
-  lines.push(`*Касса нал:* ${fmt(kassaBalance)}€`);
+  lines.push(`*Касса нал:* ${fmt(kassaBalanceVal)}€`);
   lines.push(``);
 
-  // Расходы
-  const filledEmps = EMPLOYEES.filter(n=>expenses[n].sum && parseFloat(String(expenses[n].sum).replace(',','.')||'0')>0);
-  const filledOth  = OTHER_EXPENSES.filter(n=>otherExp[n]  && parseFloat(String(otherExp[n]).replace(',','.')  ||'0')>0);
-  const totalExpAll = filledEmps.reduce((s,n)=>s+parseFloat(String(expenses[n].sum).replace(',','.')),0)
-                    + filledOth.reduce((s,n)=>s+parseFloat(String(otherExp[n]).replace(',','.')),0);
+  // Расходы — сортировка по примеру:
+  // 1. Мойка
+  // 2. Сотрудники без (К)
+  // 3. Сотрудники с (К)
+  // 4. OTHER_EXPENSES в порядке массива (кроме Мойки и Конверт оф)
+  // 5. Конверт оф в конце
+  const ORDER_OTHER = ['DJ','Олег','Бензин','Метро','Ремонт','Табак','Магазин','Уборка Офиса','Уборка ресторана','Артем','Николай'];
 
-  if(filledEmps.length || filledOth.length){
+  const empWithout = EMPLOYEES.filter(n=>pf(expenses[n].sum)>0 && !expenses[n].checked);
+  const empWith    = EMPLOYEES.filter(n=>pf(expenses[n].sum)>0 && expenses[n].checked);
+
+  const allLines = [];
+
+  // Мойка первой
+  if(pf(otherExp['Мойка'])>0){
+    allLines.push(`Мойка ${Math.round(pf(otherExp['Мойка'])*100)/100}`);
+  }
+
+  // Сотрудники без (К)
+  empWithout.forEach(n=>{
+    const v = Math.round(pf(expenses[n].sum)*100)/100;
+    allLines.push(`${n} ${v}`);
+  });
+
+  // Сотрудники с (К)
+  empWith.forEach(n=>{
+    const v = Math.round(pf(expenses[n].sum)*100)/100;
+    allLines.push(`${n} ${v} (К)`);
+  });
+
+  // Другие расходы по порядку
+  ORDER_OTHER.forEach(n=>{
+    if(pf(otherExp[n])>0){
+      const v = Math.round(pf(otherExp[n])*100)/100;
+      allLines.push(`${n} ${v}`);
+    }
+  });
+
+  // Конверт оф последним в расходах
+  if(konvertOf>0){
+    allLines.push(`Оф кон ${Math.round(konvertOf*100)/100}`);
+  }
+
+  if(allLines.length){
+    const totalExpAll = EMPLOYEES.reduce((s,n)=>s+pf(expenses[n].sum),0)
+                      + OTHER_EXPENSES.reduce((s,n)=>s+pf(otherExp[n]),0);
     lines.push(`*Расходы:* - ${fmt(totalExpAll)}€`);
-    filledEmps.forEach(n=>{
-      const v = Math.round(parseFloat(String(expenses[n].sum).replace(',','.')) * 100)/100;
-      const k = expenses[n].checked ? ' (К)' : '';
-      lines.push(`${n} ${v}${k}`);
-    });
-    filledOth.forEach(n=>{
-      const v = Math.round(parseFloat(String(otherExp[n]).replace(',','.')) * 100)/100;
-      const reason = envelopeReason && n.toLowerCase().includes('конверт') ? ` (${envelopeReason})` : '';
-      lines.push(`${n} ${v}${reason}`);
-    });
+    allLines.forEach(l=>lines.push(l));
   }
 
   return lines.join('\n');
@@ -1516,9 +1540,25 @@ function skipInstall(){
   setTimeout(tryAutoSignIn, 300);
 }
 
+function applyDarkHeader(isDark){
+  const h = g('mainHeader');
+  if(!h) return;
+  if(isDark){
+    h.style.background = '#1c1c1e';
+    h.style.backdropFilter = 'none';
+    h.style.webkitBackdropFilter = 'none';
+    h.style.borderBottomColor = 'rgba(255,255,255,.1)';
+  } else {
+    h.style.background = '';
+    h.style.backdropFilter = '';
+    h.style.webkitBackdropFilter = '';
+    h.style.borderBottomColor = '';
+  }
+}
 function toggleDark(){
   const isDark = document.body.classList.toggle('dark');
   g('darkBtn').textContent = isDark ? '☀️' : '🌙';
+  applyDarkHeader(isDark);
   try{ localStorage.setItem('so_dark', isDark?'1':'0'); }catch(e){}
 }
 function loadDarkMode(){
@@ -1527,6 +1567,7 @@ function loadDarkMode(){
       document.body.classList.add('dark');
       const btn = g('darkBtn');
       if(btn) btn.textContent = '☀️';
+      applyDarkHeader(true);
     }
   }catch(e){}
 }
