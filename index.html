@@ -541,13 +541,16 @@ const CFG = {
 // If already logged in today, hide login screen and try silent auth immediately
 (function(){
   try{
-    const today = new Date().toDateString();
-    const loggedDate = sessionStorage.getItem('so_loggedin_date');
     const tokenExp = parseInt(localStorage.getItem('so_token_exp')||'0');
-    if(loggedDate === today && tokenExp > Date.now()){
-      // Hide login screen immediately, show loading
+    if(tokenExp > Date.now()){
+      // Token still valid — hide login screen immediately
       const ls = document.getElementById('loginScreen');
       if(ls) ls.style.display = 'none';
+      // Restore user info from cache
+      const pic = localStorage.getItem('so_user_pic')||'';
+      const name = localStorage.getItem('so_user_name')||'';
+      if(pic){ const av = document.getElementById('userAvatar'); if(av) av.src = pic; }
+      if(name){ const nm = document.getElementById('userName'); if(nm) nm.textContent = name; }
     }
   }catch(e){}
   // Load dark mode immediately
@@ -585,14 +588,17 @@ function signIn(){
       accessToken = resp.access_token;
       // Save token expiry time
       try{ localStorage.setItem('so_token_exp', Date.now() + (resp.expires_in||3600)*1000); }catch(e){}
-      // Mark today as logged in (skip login screen same day)
-      try{ sessionStorage.setItem('so_loggedin_date', new Date().toDateString()); }catch(e){}
+      // Mark today as logged in
+      try{ localStorage.setItem('so_loggedin_date', new Date().toDateString()); }catch(e){}
       // Get user info
       const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: {Authorization: 'Bearer ' + accessToken}
       }).then(r=>r.json());
       g('userAvatar').src = ui.picture || '';
       g('userName').textContent = ui.given_name || 'Пользователь';
+      // Save user info for next session
+      try{ localStorage.setItem('so_user_pic', ui.picture||''); }catch(e){}
+      try{ localStorage.setItem('so_user_name', ui.given_name||'Пользователь'); }catch(e){}
       showApp();
     }
   });
@@ -652,10 +658,12 @@ function tryAutoSignIn(){
           accessToken = resp.access_token;
           try{ localStorage.setItem('so_token_exp', Date.now() + (resp.expires_in||3600)*1000); }catch(e){}
           // Mark today as logged in
-          try{ sessionStorage.setItem('so_loggedin_date', new Date().toDateString()); }catch(e){}
+          try{ localStorage.setItem('so_loggedin_date', new Date().toDateString()); }catch(e){}
           const ui = await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+accessToken}}).then(r=>r.json());
           g('userAvatar').src = ui.picture||'';
           g('userName').textContent = ui.given_name||'Пользователь';
+          try{ localStorage.setItem('so_user_pic', ui.picture||''); }catch(e){}
+          try{ localStorage.setItem('so_user_name', ui.given_name||'Пользователь'); }catch(e){}
           showApp();
         }
       });
@@ -912,11 +920,11 @@ function renderForm(){
     html += `
     <div class="exp-row">
       <div class="exp-name">${esc(name)}</div>
-      <input class="exp-input${hasVal?' has-value':''}" type="number" inputmode="decimal"
+      <input class="exp-input${hasVal?' has-value':''}" type="text" inputmode="decimal"
         placeholder="€ 0"
         value="${e.sum||''}"
-        onchange="updateExp('${esc(name)}','sum',this.value)"
-        oninput="this.classList.toggle('has-value',this.value!='')">
+        onchange="updateExp('${esc(name)}','sum',this.value.replace(',','.'))"
+        oninput="this.value=this.value.replace(',','.');this.classList.toggle('has-value',this.value!='')">
       <div class="checkbox${e.checked?' checked':''}" onclick="toggleCheck('${esc(name)}')">
         <svg viewBox="0 0 14 14" fill="none" stroke="#fff" stroke-width="2.5"><path d="m2 7 3.5 3.5L12 3"/></svg>
       </div>
@@ -933,11 +941,11 @@ function renderForm(){
     html += `
     <div class="exp-row">
       <div class="exp-name">${esc(name)}</div>
-      <input class="exp-input${hasVal?' has-value':''}" type="number" inputmode="decimal"
+      <input class="exp-input${hasVal?' has-value':''}" type="text" inputmode="decimal"
         placeholder="€ 0"
         value="${val||''}"
-        onchange="updateOther('${esc(name)}',this.value)"
-        oninput="this.classList.toggle('has-value',this.value!='')">
+        onchange="updateOther('${esc(name)}',this.value.replace(',','.'))"
+        oninput="this.value=this.value.replace(',','.');this.classList.toggle('has-value',this.value!='')">
     </div>`;
   });
   html += `</div>`;
@@ -957,11 +965,11 @@ function renderForm(){
     </div>
     <div class="field-row">
       <div class="field-label">Расход из конверта</div>
-      <input class="field-input${envExpVal?' has-value':''}" type="number" inputmode="decimal"
+      <input class="field-input${envExpVal?' has-value':''}" type="text" inputmode="decimal"
         placeholder="€ 0" value="${envExpVal}"
         data-field="envExpense"
-        onchange="envelopeExpense=this.value;updateEnvTotal()"
-        oninput="this.classList.toggle('has-value',this.value!='');envelopeExpense=this.value;updateEnvTotal()">
+        onchange="envelopeExpense=this.value.replace(',','.');updateEnvTotal()"
+        oninput="this.value=this.value.replace(',','.');this.classList.toggle('has-value',this.value!='');envelopeExpense=this.value;updateEnvTotal()">
     </div>
     <div class="field-row" style="border-bottom:1px solid var(--b2)">
       <div class="field-label">Причина расхода</div>
@@ -992,11 +1000,11 @@ function renderForm(){
     html += `
     <div class="field-row">
       <div class="field-label">Входная сумма</div>
-      <input class="field-input${kassaOpen?' has-value':''}" type="number" inputmode="decimal"
+      <input class="field-input${kassaOpen?' has-value':''}" type="text" inputmode="decimal"
         placeholder="€ 0" value="${kassaOpen||''}"
         data-field="kassaOpen"
-        onchange="kassaOpen=this.value;updateKassa()"
-        oninput="this.classList.toggle('has-value',this.value!='');kassaOpen=this.value;updateKassa()">
+        onchange="kassaOpen=this.value.replace(',','.');updateKassa()"
+        oninput="this.value=this.value.replace(',','.');this.classList.toggle('has-value',this.value!='');kassaOpen=this.value;updateKassa()">
     </div>`;
   }
 
@@ -1454,9 +1462,8 @@ function buildWhatsAppReport(){
   lines.push(``);
 
   // Расходы — строгий порядок по примеру:
-  // Мойка → без(К) сотр. → с(К) сотр. (по порядку EMPLOYEES) → Экстра →
-  // DJ → Олег → Бензин → Метро → Ремонт → Магазин → Табак →
-  // Уборка Офиса → Уборка ресторана → Артем → Николай → Оф кон
+  // Мойка → все сотрудники в порядке EMPLOYEES (каждый с/без К) →
+  // DJ → Олег → Магазин → Ремонт → Уборка Офиса → Уборка ресторана → Артем → Николай → Оф кон
 
   function fmtVal(v){ return Math.round(pf(v)*100)/100; }
 
@@ -1466,32 +1473,27 @@ function buildWhatsAppReport(){
   if(pf(otherExp['Мойка'])>0)
     allLines.push(`Мойка ${fmtVal(otherExp['Мойка'])}`);
 
-  // 2. Сотрудники БЕЗ (К) — в порядке EMPLOYEES (кроме Экстра)
+  // 2. Все сотрудники в порядке EMPLOYEES (кроме Экстра) — каждый на своём месте, с тегом или без
   EMPLOYEES.filter(n=>n!=='Экстра').forEach(n=>{
-    if(pf(expenses[n].sum)>0 && !expenses[n].checked)
-      allLines.push(`${n} ${fmtVal(expenses[n].sum)}`);
+    if(pf(expenses[n].sum)>0){
+      const tag = expenses[n].checked ? ' (К)' : '';
+      allLines.push(`${n} ${fmtVal(expenses[n].sum)}${tag}`);
+    }
   });
 
-  // 3. Сотрудники С (К) — в порядке EMPLOYEES (кроме Экстра)
-  EMPLOYEES.filter(n=>n!=='Экстра').forEach(n=>{
-    if(pf(expenses[n].sum)>0 && expenses[n].checked)
-      allLines.push(`${n} ${fmtVal(expenses[n].sum)} (К)`);
-  });
-
-  // 4. Экстра (всегда после основных сотрудников)
+  // 3. Экстра
   if(pf(expenses['Экстра']&&expenses['Экстра'].sum)>0){
     const tag = expenses['Экстра'].checked ? ' (К)' : '';
     allLines.push(`Экстра ${fmtVal(expenses['Экстра'].sum)}${tag}`);
   }
 
-  // 5. Другие расходы в строгом порядке
-  ['DJ','Олег','Бензин','Метро','Ремонт','Магазин','Табак',
-   'Уборка Офиса','Уборка ресторана','Артем','Николай'].forEach(n=>{
+  // 4. Другие расходы в строгом порядке
+  ['DJ','Олег','Магазин','Ремонт','Уборка Офиса','Уборка ресторана','Артем','Николай'].forEach(n=>{
     if(pf(otherExp[n])>0)
       allLines.push(`${n} ${fmtVal(otherExp[n])}`);
   });
 
-  // 6. Конверт оф — всегда последним
+  // 5. Конверт оф — всегда последним
   if(konvertOf>0)
     allLines.push(`Оф кон ${fmtVal(konvertOf)}`);
 
