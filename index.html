@@ -36,6 +36,18 @@ body{height:100%;background:#f2f2f7;font-family:-apple-system,BlinkMacSystemFont
   border-bottom:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;padding:0 16px;
 }
+.header.header-dark{
+  background:#1c1c1e !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  border-bottom-color:rgba(255,255,255,.1) !important;
+}
+.header.header-light{
+  background:rgba(242,242,247,.95) !important;
+  backdrop-filter:saturate(180%) blur(20px) !important;
+  -webkit-backdrop-filter:saturate(180%) blur(20px) !important;
+  border-bottom-color:rgba(60,60,67,.13) !important;
+}
 .header-title{font-size:17px;font-weight:700;color:var(--text)}
 .header-date{font-size:13px;color:var(--t3);font-weight:500}
 .user-btn{
@@ -321,6 +333,43 @@ body.dark #reauthOverlay .debt-t{color:#f2f2f7}
 </style>
 </head>
 <body>
+<!-- ── SPLASH SCREEN ── -->
+<div id="splashScreen" style="
+  position:fixed;inset:0;z-index:10000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#f2f2f7;
+  transition:opacity .35s ease;
+">
+  <img id="splashLogo" src="https://rahim08.github.io/so-manager/icon.jpg"
+    style="width:120px;height:120px;object-fit:contain;border-radius:24px;opacity:0;transform:scale(0.85);transition:opacity .4s ease, transform .4s cubic-bezier(.16,1,.3,1)">
+  <div id="splashFooter" style="position:absolute;bottom:env(safe-area-inset-bottom,28px);left:0;right:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .4s ease .2s">
+    <span style="font-size:13px;font-weight:500;color:#6d6d72;font-family:-apple-system,sans-serif;letter-spacing:1.5px;text-transform:uppercase">Manager</span>
+  </div>
+</div>
+<script>
+(function(){
+  const isDark = localStorage.getItem('so_dark')==='1';
+  const splash = document.getElementById('splashScreen');
+  const logo = document.getElementById('splashLogo');
+  if(isDark){
+    splash.style.background = '#000000';
+    document.body.classList.add('dark');
+  }
+  // Анимация логотипа
+  setTimeout(()=>{
+    logo.style.opacity = '1';
+    logo.style.transform = 'scale(1)';
+    const ft = document.getElementById('splashFooter');
+    if(ft) ft.style.opacity = '1';
+  }, 80);
+  // Убрать splash
+  setTimeout(()=>{
+    splash.style.opacity = '0';
+    setTimeout(()=>{ if(splash) splash.remove(); }, 350);
+  }, 1600);
+})();
+</script>
+
 
 <!-- ▼ КОНФИГ — вставь свои данные -->
 <script>
@@ -1568,18 +1617,13 @@ function skipInstall(){
 function applyDarkHeader(isDark){
   const h = g('mainHeader');
   if(!h) return;
+  h.style.cssText = '';
   if(isDark){
-    h.style.background = '#1c1c1e';
-    h.style.backdropFilter = 'none';
-    h.style.webkitBackdropFilter = 'none';
-    h.style.borderBottomColor = 'rgba(255,255,255,.1)';
-    h.style.color = '#f2f2f7';
+    h.classList.remove('header-light');
+    h.classList.add('header-dark');
   } else {
-    h.style.background = 'rgba(242,242,247,.95)';
-    h.style.backdropFilter = 'saturate(180%) blur(20px)';
-    h.style.webkitBackdropFilter = 'saturate(180%) blur(20px)';
-    h.style.borderBottomColor = 'rgba(60,60,67,.13)';
-    h.style.color = '#1c1c1e';
+    h.classList.remove('header-dark');
+    h.classList.add('header-light');
   }
 }
 function toggleDark(){
